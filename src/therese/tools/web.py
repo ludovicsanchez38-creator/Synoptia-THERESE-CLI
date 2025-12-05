@@ -236,12 +236,15 @@ class WebSearchTool(Tool):
                     output=f"Aucun résultat trouvé pour: {query}",
                 )
 
-            # Formater les résultats
+            # Formater les résultats (URLs tronquées pour l'affichage)
             output_lines = [f"# Résultats pour \"{query}\"\n"]
             for i, r in enumerate(results, 1):
-                output_lines.append(f"## {i}. {r['title']}")
-                output_lines.append(f"🔗 {r['url']}")
-                output_lines.append(f"{r['snippet']}\n")
+                # Tronquer l'URL pour l'affichage si trop longue
+                url = r['url']
+                display_url = url if len(url) <= 60 else url[:57] + "..."
+                output_lines.append(f"**{i}. {r['title']}**")
+                output_lines.append(f"   {display_url}")
+                output_lines.append(f"   {r['snippet']}\n")
 
             return ToolResult(success=True, output="\n".join(output_lines))
 

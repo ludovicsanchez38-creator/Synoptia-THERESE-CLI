@@ -244,28 +244,57 @@ class CommandRegistry:
         """Change le modèle."""
         from .config import config
 
-        models = [
-            "mistral-large-latest",
-            "mistral-large-3-25-12",
-            "codestral-latest",
-            "mistral-medium-latest",
-            "mistral-small-latest",
-        ]
+        # Modèles organisés par catégorie
+        models = {
+            "chat": [
+                ("mistral-large-latest", "Flagship - meilleur qualité"),
+                ("mistral-medium-latest", "Équilibré qualité/coût"),
+                ("mistral-small-latest", "Rapide et économique"),
+            ],
+            "code": [
+                ("codestral-latest", "Spécialisé code"),
+            ],
+            "vision": [
+                ("pixtral-large-latest", "Multimodal - analyse d'images"),
+                ("pixtral-12b-2409", "Vision léger"),
+            ],
+            "reasoning": [
+                ("magistral-medium-2509", "🧠 Raisonnement frontier (thinking visible)"),
+                ("magistral-small-2509", "🧠 Raisonnement efficient"),
+            ],
+        }
+
+        all_models = []
+        for category_models in models.values():
+            all_models.extend([m[0] for m in category_models])
 
         if not args:
             lines = ["# 🤖 Modèles disponibles", ""]
-            for m in models:
-                marker = "→" if m == config.model else " "
-                lines.append(f"{marker} `{m}`")
-            lines.append("")
+
+            for category, category_models in models.items():
+                if not category_models:
+                    continue
+                lines.append(f"**{category.upper()}**")
+                for m, desc in category_models:
+                    marker = "→" if m == config.model else " "
+                    lines.append(f"{marker} `{m}` - {desc}")
+                lines.append("")
+
             lines.append(f"**Actuel:** `{config.model}`")
+            lines.append("")
+            lines.append("Usage: `/model mistral-large-latest`")
             return "\n".join(lines)
 
-        if args in models or args.startswith("mistral"):
+        if args in all_models:
             config.model = args
             return f"✅ Modèle changé: `{args}`"
 
-        return f"❌ Modèle inconnu: {args}"
+        # Suggestions si le modèle est proche
+        suggestions = [m for m in all_models if args.lower() in m.lower()]
+        if suggestions:
+            return f"❌ Modèle inconnu: `{args}`\n\n**Suggestions:** {', '.join(f'`{s}`' for s in suggestions)}"
+
+        return f"❌ Modèle inconnu: `{args}`\n\nTape `/model` pour voir la liste."
 
     async def _cmd_mode(self, args: str = "") -> str:
         """Change le mode d'approbation."""

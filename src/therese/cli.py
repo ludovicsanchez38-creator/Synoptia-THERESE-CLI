@@ -7,6 +7,11 @@ Usage:
     therese --model mistral-large-3-25-12
 """
 
+# IMPORTANT: Appliquer nest_asyncio AVANT tout import async
+# Résout "Event loop is closed" avec httpx/Mistral SDK
+import nest_asyncio
+nest_asyncio.apply()
+
 import sys
 from pathlib import Path
 
@@ -151,7 +156,7 @@ def main(
     # Mode interactif avec Textual
     from .ui import ThereseApp
 
-    app = ThereseApp(working_dir=working_dir or Path.cwd())
+    app = ThereseApp(working_dir=working_dir or config.working_dir)
 
     # Si un prompt est fourni, on l'enverra au démarrage
     if prompt:

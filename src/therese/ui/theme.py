@@ -86,6 +86,7 @@ Screen {
 .message-assistant {
     background: #161B22;
     border: solid #FF7000;
+    min-height: 5;
 }
 
 .message-tool {
@@ -101,6 +102,34 @@ Screen {
 
 .message-content {
     color: #E6EDF3;
+    width: 100%;
+}
+
+/* Markdown doit wrapper le texte - même les URLs longues */
+Markdown {
+    width: 100%;
+    overflow: hidden;
+}
+
+/* Force le wrap des lignes longues (URLs, etc.) */
+Markdown Static {
+    text-overflow: fold;
+}
+
+MarkdownH1, MarkdownH2, MarkdownH3, MarkdownParagraph {
+    width: 100%;
+    text-overflow: fold;
+}
+
+MarkdownBulletList, MarkdownOrderedList {
+    width: 100%;
+    padding-left: 2;
+}
+
+/* Bloc code - aussi fold pour les longues lignes */
+MarkdownFence {
+    text-overflow: fold;
+    overflow-x: hidden;
 }
 
 /* Code blocks */
@@ -111,11 +140,12 @@ Screen {
     margin: 1 0;
 }
 
-/* Zone de saisie */
+/* Zone de saisie expandable */
 #input-area {
     dock: bottom;
     height: auto;
-    max-height: 10;
+    min-height: 5;
+    max-height: 14;
     background: #161B22;
     border-top: solid #30363D;
     padding: 1 2;
@@ -125,6 +155,9 @@ Screen {
     background: #0D1117;
     border: solid #30363D;
     padding: 0 1;
+    height: auto;
+    min-height: 3;
+    max-height: 10;
     color: #E6EDF3;
 }
 
@@ -163,18 +196,25 @@ Screen {
     text-align: center;
 }
 
-/* Scrollbar */
-Vertical::-webkit-scrollbar {
-    width: 8px;
+/* Message command */
+.message-command {
+    background: #1C2128;
+    border: solid #D29922;
 }
 
-Vertical::-webkit-scrollbar-thumb {
-    background: #30363D;
+/* Grand logo */
+#big-logo {
+    padding: 1 2;
+    margin-bottom: 1;
+    text-align: center;
 }
 
-/* Selection */
-::selection {
-    background: #FF7000;
-    color: #0D1117;
+/* Chain of Thought (raisonnement Magistral) */
+.streaming-cot {
+    background: #1a1f29;
+    border: dashed #0055A4;
+    padding: 1 2;
+    margin: 1 0;
+    color: #7D8590;
 }
 """

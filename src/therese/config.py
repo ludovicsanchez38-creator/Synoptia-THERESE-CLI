@@ -10,6 +10,22 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _get_default_working_dir() -> Path:
+    """Retourne le répertoire de travail par défaut, le crée si besoin."""
+    default = Path(os.getenv(
+        "THERESE_WORKING_DIR",
+        os.path.expanduser("~/Desktop/Therese repo")
+    ))
+    # Créer le dossier s'il n'existe pas
+    if not default.exists():
+        try:
+            default.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            # Fallback sur le home si on ne peut pas créer
+            default = Path.home()
+    return default
+
+
 @dataclass
 class ThereseConfig:
     """Configuration principale de THERESE."""
@@ -26,8 +42,8 @@ class ThereseConfig:
     mode: Literal["auto", "safe", "yolo"] = "auto"
     ultrathink: bool = False  # Mode raisonnement étendu
 
-    # Répertoire de travail
-    working_dir: Path = field(default_factory=Path.cwd)
+    # Répertoire de travail (sandbox par défaut pour la sécurité)
+    working_dir: Path = field(default_factory=_get_default_working_dir)
 
     # UI
     theme: Literal["mistral", "dark", "light"] = "mistral"

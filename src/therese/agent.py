@@ -3,16 +3,23 @@ Agent THERESE - Moteur de raisonnement avec Mistral 3.
 
 Gère la boucle de conversation, le function calling,
 le mode ultrathink, la mémoire projet, et les commandes slash.
+Support des images via Mistral Vision (Pixtral).
 """
 
+import base64
 import json
+import mimetypes
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, AsyncIterator
 
 from mistralai import Mistral
 from mistralai.models import (
     AssistantMessage,
+    ImageURLChunk,
     SystemMessage,
+    TextChunk,
+    ThinkChunk,
     ToolMessage,
     UserMessage,
 )
@@ -32,6 +39,43 @@ class Message:
     tool_calls: list[dict] | None = None
     tool_call_id: str | None = None
     name: str | None = None
+    images: list[str] | None = None  # Liste de chemins d'images
+
+
+# Extensions d'images supportées par Mistral Vision
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+
+
+def encode_image_to_base64(image_path: str) -> tuple[str, str]:
+    """
+    Encode une image en base64 pour l'API Mistral Vision.
+
+    Returns:
+        Tuple (base64_data, mime_type)
+    """
+    path = Path(image_path).expanduser().resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"Image non trouvée: {image_path}")
+
+    # Détecter le type MIME
+    mime_type, _ = mimetypes.guess_type(str(path))
+    if not mime_type:
+        mime_type = "image/png"  # Fallback
+
+    # Lire et encoder en base64
+    with open(path, "rb") as f:
+        data = base64.standard_b64encode(f.read()).decode("utf-8")
+
+    return data, mime_type
+
+
+def is_image_path(path: str) -> bool:
+    """Vérifie si un chemin pointe vers une image."""
+    try:
+        p = Path(path).expanduser()
+        return p.suffix.lower() in IMAGE_EXTENSIONS
+    except Exception:
+        return False
 
 
 @dataclass
@@ -173,13 +217,30 @@ Allez, au boulot !"""
         self.messages.append(Message(role="system", content=system_prompt))
 
     def _messages_to_mistral(self) -> list:
-        """Convertit les messages au format Mistral."""
+        """Convertit les messages au format Mistral (avec support images)."""
         result = []
         for msg in self.messages:
             if msg.role == "system":
                 result.append(SystemMessage(content=msg.content))
             elif msg.role == "user":
-                result.append(UserMessage(content=msg.content))
+                # Support multi-modal si images présentes
+                if msg.images:
+                    content_chunks = []
+                    # D'abord le texte
+                    if msg.content:
+                        content_chunks.append(TextChunk(text=msg.content))
+                    # Puis les images
+                    for img_path in msg.images:
+                        try:
+                            b64_data, mime_type = encode_image_to_base64(img_path)
+                            image_url = f"data:{mime_type};base64,{b64_data}"
+                            content_chunks.append(ImageURLChunk(image_url=image_url))
+                        except Exception as e:
+                            # Si l'image échoue, ajouter un message d'erreur
+                            content_chunks.append(TextChunk(text=f"\n[Erreur image: {e}]"))
+                    result.append(UserMessage(content=content_chunks))
+                else:
+                    result.append(UserMessage(content=msg.content))
             elif msg.role == "assistant":
                 if msg.tool_calls:
                     result.append(AssistantMessage(
@@ -197,7 +258,7 @@ Allez, au boulot !"""
         return result
 
     async def _execute_tool(self, name: str, arguments: dict[str, Any]) -> str:
-        """Exécute un outil et retourne le résultat."""
+        """Exécute un outil et retourne le résultat (async)."""
         tool = TOOLS.get(name)
         if not tool:
             return f"Erreur: outil '{name}' non trouvé"
@@ -215,31 +276,91 @@ Allez, au boulot !"""
         except Exception as e:
             return f"Erreur d'exécution de {name}: {e}"
 
-    async def chat(self, user_input: str) -> AsyncIterator[str]:
+    def _execute_tool_sync(self, name: str, arguments: dict[str, Any]) -> str:
+        """Exécute un outil de manière synchrone (pour chat_sync)."""
+        import asyncio
+
+        tool = TOOLS.get(name)
+        if not tool:
+            return f"Erreur: outil '{name}' non trouvé"
+
+        try:
+            # Nettoyer toute loop existante avant d'en créer une nouvelle
+            try:
+                asyncio.set_event_loop(None)
+            except Exception:
+                pass
+
+            # Créer une nouvelle event loop isolée
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(tool.execute(**arguments))
+            finally:
+                loop.close()
+                asyncio.set_event_loop(None)
+
+            # Tracker les changements dans la mémoire
+            if name in ("write_file", "edit_file") and result.success:
+                memory = get_memory_manager(self.config.working_dir)
+                file_path = arguments.get("file_path", "unknown")
+                memory.add_change(f"Modifié: {file_path}")
+
+            return result.to_string()
+        except Exception as e:
+            return f"Erreur d'exécution de {name}: {e}"
+
+    def chat_sync(
+        self, user_input: str, images: list[str] | None = None
+    ):
         """
-        Envoie un message et stream la réponse.
+        Version SYNCHRONE de chat() pour éviter les problèmes d'event loop.
+
+        Utilise client.chat.stream() (sync) au lieu de stream_async().
+        Doit être appelée depuis un thread séparé.
 
         Yields des chunks de texte pour l'affichage streaming.
-        Gère automatiquement les tool calls.
         """
-        # Ajouter le message utilisateur
-        self.messages.append(Message(role="user", content=user_input))
+        import asyncio
 
-        max_iterations = 15  # Augmenté pour les tâches complexes
+        # IMPORTANT: Nettoyer toute référence à une event loop existante
+        # Le thread hérite parfois d'une référence à la loop de Textual
+        try:
+            asyncio.set_event_loop(None)
+        except Exception:
+            pass
+
+        # Créer un nouveau client SYNC à chaque appel
+        client = Mistral(api_key=self.config.api_key)
+
+        # Ajouter le message utilisateur (avec images si présentes)
+        self.messages.append(Message(role="user", content=user_input, images=images))
+
+        # Utiliser Pixtral pour les images, sinon le modèle par défaut
+        model = "pixtral-large-latest" if images else self.config.model
+
+        max_iterations = 15
 
         for iteration in range(max_iterations):
-            # Appel à Mistral avec streaming
-            response = self.client.chat.stream(
-                model=self.config.model,
-                messages=self._messages_to_mistral(),
-                tools=get_tools_schema(),
-                tool_choice="auto",
-            )
+            # Appel SYNCHRONE à Mistral
+            if images and iteration == 0:
+                response = client.chat.stream(
+                    model=model,
+                    messages=self._messages_to_mistral(),
+                )
+            else:
+                response = client.chat.stream(
+                    model=model if iteration == 0 else self.config.model,
+                    messages=self._messages_to_mistral(),
+                    tools=get_tools_schema(),
+                    tool_choice="auto",
+                )
 
             # Collecter la réponse
             content_chunks: list[str] = []
             tool_calls: list[dict] = []
 
+            # Itération SYNCHRONE sur le stream
             for event in response:
                 if event.data.choices:
                     choice = event.data.choices[0]
@@ -247,13 +368,23 @@ Allez, au boulot !"""
 
                     # Contenu textuel
                     if delta.content:
-                        content_chunks.append(delta.content)
-                        yield delta.content
+                        if isinstance(delta.content, list):
+                            for chunk_item in delta.content:
+                                if isinstance(chunk_item, ThinkChunk):
+                                    for think_text in chunk_item.thinking or []:
+                                        if hasattr(think_text, 'text') and think_text.text:
+                                            content_chunks.append(think_text.text)
+                                            yield think_text.text
+                                elif hasattr(chunk_item, 'text') and chunk_item.text:
+                                    content_chunks.append(chunk_item.text)
+                                    yield chunk_item.text
+                        else:
+                            content_chunks.append(delta.content)
+                            yield delta.content
 
                     # Tool calls
                     if delta.tool_calls:
                         for tc in delta.tool_calls:
-                            # Gérer l'accumulation des tool calls en streaming
                             if tc.index >= len(tool_calls):
                                 tool_calls.append({
                                     "id": tc.id or "",
@@ -264,7 +395,6 @@ Allez, au boulot !"""
                                     },
                                 })
                             else:
-                                # Accumuler les arguments
                                 if tc.function.arguments:
                                     tool_calls[tc.index]["function"]["arguments"] += tc.function.arguments
                                 if tc.function.name:
@@ -296,7 +426,7 @@ Allez, au boulot !"""
                 tool_calls=tool_calls,
             ))
 
-            # Exécuter les outils
+            # Exécuter les outils (de manière synchrone)
             for tc in tool_calls:
                 func_name = tc["function"]["name"]
                 try:
@@ -304,10 +434,8 @@ Allez, au boulot !"""
                 except json.JSONDecodeError:
                     func_args = {}
 
-                # Afficher l'appel d'outil
                 yield f"\n\n⚙️  **{func_name}**"
                 if func_args:
-                    # Tronquer les arguments longs
                     args_preview = []
                     for k, v in func_args.items():
                         v_str = repr(v)
@@ -318,21 +446,20 @@ Allez, au boulot !"""
                 else:
                     yield "()\n"
 
-                # Exécuter l'outil
-                result = await self._execute_tool(func_name, func_args)
+                # Exécuter l'outil de manière synchrone
+                result = self._execute_tool_sync(func_name, func_args)
 
-                # Afficher un résumé du résultat
                 lines = result.split("\n")
-                if len(lines) > 10:
-                    result_preview = "\n".join(lines[:10]) + f"\n... ({len(lines) - 10} lignes de plus)"
-                elif len(result) > 500:
-                    result_preview = result[:500] + "..."
+                if len(lines) > 30:
+                    result_preview = "\n".join(lines[:30]) + f"\n... ({len(lines) - 30} lignes de plus)"
+                elif len(result) > 2000:
+                    result_preview = result[:2000] + "..."
                 else:
                     result_preview = result
 
-                yield f"```\n{result_preview}\n```\n"
+                # Pas de bloc code pour que le texte wrappe correctement
+                yield f"\n{result_preview}\n"
 
-                # Ajouter le résultat aux messages
                 self.messages.append(Message(
                     role="tool",
                     content=result,

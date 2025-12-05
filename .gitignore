@@ -55,3 +55,6 @@ htmlcov/
 
 # Ruff
 .ruff_cache/
+
+# Dev notes (contains secrets)
+CLAUDE.md
