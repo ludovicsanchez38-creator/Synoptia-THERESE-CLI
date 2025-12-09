@@ -912,6 +912,11 @@ Que puis-je faire pour toi ?"""
                     result = self.agent.compact()
                     self._add_message(result, "command")
                     return
+                elif response.startswith("__EXPORT__:"):
+                    filename = response.split(":", 1)[1]
+                    result = self._export_conversation(filename)
+                    self._add_message(result, "command")
+                    return
 
                 self._add_message(user_input, "user")
                 self._add_message(response, "command")
@@ -1051,4 +1056,59 @@ Que puis-je faire pour toi ?"""
             self._last_streaming_msg.toggle_cot()
         else:
             self.notify("Pas de raisonnement à afficher", severity="warning")
+
+    def _export_conversation(self, filename: str) -> str:
+        """Exporte la conversation en fichier Markdown."""
+        from datetime import datetime
+
+        # Construire le contenu Markdown
+        lines = [
+            f"# Conversation THÉRÈSE",
+            f"",
+            f"**Exporté le:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"**Modèle:** {self.agent.config.model}",
+            f"**Messages:** {len(self.agent.messages)}",
+            f"",
+            "---",
+            "",
+        ]
+
+        for msg in self.agent.messages:
+            if msg.role == "system":
+                continue  # Pas besoin d'exporter le system prompt
+            elif msg.role == "user":
+                lines.append(f"## 👤 Utilisateur\n")
+                lines.append(msg.content or "")
+                lines.append("")
+            elif msg.role == "assistant":
+                lines.append(f"## 🤖 THÉRÈSE\n")
+                lines.append(msg.content or "")
+                if msg.tool_calls:
+                    lines.append("\n**Outils utilisés:**")
+                    for tc in msg.tool_calls:
+                        lines.append(f"- `{tc['function']['name']}`")
+                lines.append("")
+            elif msg.role == "tool":
+                lines.append(f"### 🔧 Résultat: {msg.name}\n")
+                # Tronquer les résultats longs
+                content = msg.content or ""
+                if len(content) > 1000:
+                    content = content[:1000] + "\n... (tronqué)"
+                lines.append(f"```\n{content}\n```\n")
+
+        lines.extend([
+            "---",
+            "",
+            f"*Exporté avec THÉRÈSE CLI v{self.agent.config.model}*",
+        ])
+
+        # Écrire le fichier
+        export_path = self.working_dir / filename
+        try:
+            with open(export_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+
+            return f"✅ Conversation exportée dans:\n`{export_path}`"
+        except Exception as e:
+            return f"❌ Erreur d'export: {e}"
 

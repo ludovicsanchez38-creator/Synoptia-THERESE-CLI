@@ -333,6 +333,14 @@ Allez, au boulot !"""
         # Créer un nouveau client SYNC à chaque appel
         client = Mistral(api_key=self.config.api_key)
 
+        # FIX: Vérifier si le dernier message est un "tool" (cas: iteration limit atteinte)
+        # L'API Mistral n'accepte pas "tool" -> "user", il faut "tool" -> "assistant" -> "user"
+        if self.messages and self.messages[-1].role == "tool":
+            self.messages.append(Message(
+                role="assistant",
+                content="(Reprise de la conversation après interruption)"
+            ))
+
         # Ajouter le message utilisateur (avec images si présentes)
         self.messages.append(Message(role="user", content=user_input, images=images))
 
@@ -470,28 +478,116 @@ Allez, au boulot !"""
         else:
             yield "\n\n⚠️ Limite d'itérations atteinte. La tâche est peut-être trop complexe."
 
+        # Auto-compact si nécessaire (après la réponse)
+        compacted, compact_msg = self.auto_compact()
+        if compacted:
+            yield f"\n\n{compact_msg}"
+
     def reset(self) -> None:
         """Réinitialise la conversation."""
         self.messages.clear()
         self._add_system_prompt()
 
+    def _should_auto_compact(self) -> bool:
+        """Vérifie si on doit auto-compacter basé sur les tokens."""
+        if not self.config.auto_compact:
+            return False
+        threshold = int(self.config.max_context_tokens * self.config.compact_threshold)
+        return self.usage.prompt_tokens > threshold
+
+    def _format_messages_for_summary(self, messages: list[Message]) -> str:
+        """Formate les messages pour le résumé."""
+        formatted = []
+        for msg in messages:
+            if msg.role == "system":
+                continue
+            prefix = "👤" if msg.role == "user" else "🤖" if msg.role == "assistant" else "🔧"
+            content = msg.content[:500] if msg.content else ""
+            if msg.tool_calls:
+                tools = [tc["function"]["name"] for tc in msg.tool_calls]
+                content += f" [Tools: {', '.join(tools)}]"
+            formatted.append(f"{prefix} {content}")
+        return "\n\n".join(formatted)
+
+    def _generate_summary_sync(self, messages: list[Message]) -> str:
+        """Génère un résumé LLM des messages (sync)."""
+        client = Mistral(api_key=self.config.api_key)
+
+        formatted = self._format_messages_for_summary(messages)
+        summary_prompt = f"""Résume cette conversation en 3-5 points clés.
+Garde les informations importantes : fichiers modifiés, décisions prises, problèmes résolus.
+Sois concis (max 300 mots).
+
+Conversation:
+{formatted[:8000]}
+
+Résumé:"""
+
+        try:
+            response = client.chat.complete(
+                model="mistral-small-latest",  # Modèle rapide pour le résumé
+                messages=[{"role": "user", "content": summary_prompt}],
+                max_tokens=500,
+            )
+            return response.choices[0].message.content or "[Résumé indisponible]"
+        except Exception as e:
+            return f"[Résumé auto: {len(messages)} messages précédents - Erreur: {e}]"
+
+    def auto_compact(self) -> tuple[bool, str]:
+        """
+        Auto-compacte si nécessaire. Utilise le LLM pour résumer.
+
+        Returns:
+            (compacted: bool, message: str)
+        """
+        if not self._should_auto_compact():
+            return False, ""
+
+        if len(self.messages) <= self.config.compact_keep_recent + 2:
+            return False, ""
+
+        # Séparer les messages
+        system_msg = self.messages[0]
+        recent = self.messages[-self.config.compact_keep_recent:]
+        old_messages = self.messages[1:-self.config.compact_keep_recent]
+
+        if not old_messages:
+            return False, ""
+
+        # S'assurer que recent commence par un message "user" pour un ordre valide
+        # Sinon on risque: assistant (résumé) -> tool -> user (invalide)
+        while recent and recent[0].role in ("tool", "assistant"):
+            recent = recent[1:]
+
+        if not recent:
+            return False, ""
+
+        # Générer un résumé intelligent
+        summary = self._generate_summary_sync(old_messages)
+
+        # Reconstruire
+        old_count = len(self.messages)
+        self.messages = [system_msg]
+        self.messages.append(Message(
+            role="assistant",
+            content=f"📝 **Résumé de la conversation précédente:**\n\n{summary}"
+        ))
+        self.messages.extend(recent)
+
+        # Reset partiel des tokens (estimation)
+        self.usage.prompt_tokens = int(self.usage.prompt_tokens * 0.3)
+
+        return True, f"💾 Conversation compactée: {old_count} → {len(self.messages)} messages"
+
     def compact(self) -> str:
-        """Compacte la conversation en gardant un résumé."""
+        """Compacte manuellement la conversation avec résumé LLM."""
         if len(self.messages) <= 2:
             return "Conversation trop courte pour être compactée."
 
-        # Garder le système et les 5 derniers échanges
-        system_msg = self.messages[0]
-        recent = self.messages[-10:]
-
-        # Créer un résumé
-        summary = f"[Conversation précédente résumée - {len(self.messages)} messages]"
-
-        self.messages = [system_msg]
-        self.messages.append(Message(role="assistant", content=summary))
-        self.messages.extend(recent)
-
-        return f"Conversation compactée: {len(self.messages)} messages conservés."
+        compacted, message = self.auto_compact()
+        if compacted:
+            return message
+        return "Rien à compacter."
 
     def get_stats(self) -> dict:
         """Retourne les statistiques de la session."""

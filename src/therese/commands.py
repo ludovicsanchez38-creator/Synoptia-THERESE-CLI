@@ -127,6 +127,13 @@ class CommandRegistry:
             handler=self._cmd_status,
         ))
 
+        self.register(SlashCommand(
+            name="export",
+            description="Exporte la conversation en Markdown",
+            usage="/export [filename]",
+            handler=self._cmd_export,
+        ))
+
     async def _cmd_help(self, args: str = "") -> str:
         """Affiche l'aide."""
         if args:
@@ -342,6 +349,21 @@ class CommandRegistry:
         tool = GitStatusTool()
         result = await tool.execute()
         return result.output
+
+    async def _cmd_export(self, args: str = "") -> str:
+        """Exporte la conversation en Markdown."""
+        from datetime import datetime
+
+        # Générer le nom de fichier par défaut
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = args.strip() if args else f"therese_export_{timestamp}.md"
+
+        # S'assurer que l'extension est .md
+        if not filename.endswith(".md"):
+            filename += ".md"
+
+        # Retourner une commande spéciale pour que l'UI gère l'export
+        return f"__EXPORT__:{filename}"
 
 
 # Instance globale

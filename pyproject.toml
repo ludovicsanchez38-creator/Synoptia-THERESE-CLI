@@ -1,6 +1,6 @@
 [project]
 name = "therese-cli"
-version = "0.1.0"
+version = "0.2.0"
 description = "THERESE CLI - Assistant de code IA français propulsé par Mistral 3"
 readme = "README.md"
 license = "Apache-2.0"
@@ -8,38 +8,65 @@ requires-python = ">=3.11"
 authors = [
     { name = "Synoptia", email = "contact@synoptia.fr" }
 ]
-keywords = ["cli", "ai", "mistral", "coding-assistant", "french"]
+keywords = ["cli", "ai", "mistral", "coding-assistant", "french", "mcp"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Code Generators",
 ]
 
 dependencies = [
+    # Core
     "mistralai>=1.2.0",
-    "textual>=6.0.0",
+    "textual>=0.89.0",
     "rich>=13.9.0",
     "click>=8.1.0",
-    "pathspec>=0.12.0",
-    "python-dotenv>=1.0.0",
-    "httpx>=0.27.0",
     "pydantic>=2.9.0",
+
+    # Async / HTTP
+    "httpx>=0.27.0",
     "nest-asyncio>=1.6.0",
+
+    # Config
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.0",
+    "pathspec>=0.12.0",
+
+    # HTTP Server (therese serve)
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
 ]
 
 [project.optional-dependencies]
+# MCP support (optional car nécessite Node.js pour les serveurs)
+mcp = [
+    "mcp>=1.0.0",
+]
+
 dev = [
     "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
 ]
 
+all = [
+    "therese-cli[mcp,dev]",
+]
+
 [project.scripts]
 therese = "therese.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ludovicsanchez38-creator/Synoptia-THERESE-CLI"
+Documentation = "https://github.com/ludovicsanchez38-creator/Synoptia-THERESE-CLI#readme"
+Repository = "https://github.com/ludovicsanchez38-creator/Synoptia-THERESE-CLI"
+Issues = "https://github.com/ludovicsanchez38-creator/Synoptia-THERESE-CLI/issues"
 
 [build-system]
 requires = ["hatchling"]
@@ -58,3 +85,7 @@ select = ["E", "F", "I", "N", "W", "UP"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

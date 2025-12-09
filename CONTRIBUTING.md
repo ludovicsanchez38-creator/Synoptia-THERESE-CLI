@@ -6,7 +6,7 @@ Merci de votre intérêt pour contribuer à THÉRÈSE ! 🇫🇷
 
 ### Signaler un bug
 
-1. Vérifiez que le bug n'a pas déjà été signalé dans les [Issues](https://github.com/synoptia/therese-cli/issues)
+1. Vérifiez que le bug n'a pas déjà été signalé dans les [Issues](https://github.com/ludovicsanchez38-creator/Synoptia-THERESE-CLI/issues)
 2. Créez une nouvelle issue avec :
    - Une description claire du problème
    - Les étapes pour reproduire

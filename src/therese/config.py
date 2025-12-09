@@ -38,6 +38,11 @@ class ThereseConfig:
     max_context_tokens: int = 128_000  # Mistral Large 3 = 256K, on garde de la marge
     max_output_tokens: int = 8_192
 
+    # Auto-compact
+    auto_compact: bool = True  # Active le compactage automatique
+    compact_threshold: float = 0.75  # Compacte à 75% du max_context_tokens
+    compact_keep_recent: int = 10  # Garder les N derniers messages
+
     # Mode
     mode: Literal["auto", "safe", "yolo"] = "auto"
     ultrathink: bool = False  # Mode raisonnement étendu

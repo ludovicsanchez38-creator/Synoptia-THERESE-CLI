@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11+-blue?logo=python" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/Mistral-Large-orange" alt="Mistral AI">
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License">
+  <img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="Apache 2.0 License">
   <img src="https://img.shields.io/badge/Made_in-France-red" alt="Made in France">
 </p>
 
@@ -49,8 +49,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv tool install therese-cli
 
 # Ou depuis les sources
-git clone https://github.com/synoptia/therese-cli.git
-cd therese-cli
+git clone https://github.com/ludovicsanchez38-creator/Synoptia-THERESE-CLI.git
+cd Synoptia-THERESE-CLI
 uv tool install .
 ```
 
@@ -198,8 +198,8 @@ src/therese/
 
 ```bash
 # Cloner le repo
-git clone https://github.com/synoptia/therese-cli.git
-cd therese-cli
+git clone https://github.com/ludovicsanchez38-creator/Synoptia-THERESE-CLI.git
+cd Synoptia-THERESE-CLI
 
 # Installer les dépendances
 uv sync
@@ -239,7 +239,7 @@ Les contributions sont les bienvenues ! Voir [CONTRIBUTING.md](CONTRIBUTING.md) 
 
 ## Licence
 
-MIT License - voir [LICENSE](LICENSE)
+Apache License 2.0 - voir [LICENSE](LICENSE)
 
 ## Crédits
 
