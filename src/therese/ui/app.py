@@ -669,7 +669,7 @@ class StreamingMessage(Vertical):
                 self._last_flush = now
 
     def append_sync(self, chunk: str) -> None:
-        """Version synchrone de append (pour call_from_thread)."""
+        """Version synchrone de append (pour call_from_thread) avec buffering."""
         import time
 
         # Détecter les chunks de raisonnement (COT) de Magistral
@@ -684,11 +684,13 @@ class StreamingMessage(Vertical):
             self._is_thinking = False
 
         self._chunks.append(chunk)
+        self._pending_chunks.append(chunk)
         self._char_count += len(chunk)
 
         # Premier chunk: transition du thinking au contenu
         if not self._content_started:
             self._content_started = True
+            self._last_flush = time.time()
             if self.thinking_timer:
                 self.thinking_timer.stop()
                 self.thinking_timer = None
@@ -697,10 +699,17 @@ class StreamingMessage(Vertical):
             if self._markdown_widget:
                 self._markdown_widget.display = True
 
-        # Mettre à jour le markdown directement (sync)
-        if self._markdown_widget:
-            full_content = "".join(self._chunks)
-            self._markdown_widget.update(full_content)
+        # BUFFERING: Update seulement toutes les 200ms ou tous les 500 chars
+        # Évite O(n²) sur les longs outputs
+        now = time.time()
+        pending_size = sum(len(c) for c in self._pending_chunks)
+
+        if (now - self._last_flush) >= 0.2 or pending_size >= 500:
+            if self._markdown_widget:
+                full_content = "".join(self._chunks)
+                self._markdown_widget.update(full_content)
+            self._pending_chunks.clear()
+            self._last_flush = now
 
     def stop_stream_sync(self) -> None:
         """Version synchrone de stop_stream (pour call_from_thread)."""
@@ -709,6 +718,12 @@ class StreamingMessage(Vertical):
         if self.thinking_timer:
             self.thinking_timer.stop()
             self.thinking_timer = None
+
+        # FLUSH: S'assurer que tous les chunks pending sont affichés avant "terminé"
+        if self._pending_chunks and self._markdown_widget:
+            full_content = "".join(self._chunks)
+            self._markdown_widget.update(full_content)
+            self._pending_chunks.clear()
 
         # Afficher statut final
         if self._status_widget:
@@ -1103,7 +1118,7 @@ Que puis-je faire pour toi ?"""
         ])
 
         # Écrire le fichier
-        export_path = self.working_dir / filename
+        export_path = config.working_dir / filename
         try:
             with open(export_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(lines))

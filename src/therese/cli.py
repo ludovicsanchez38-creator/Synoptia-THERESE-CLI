@@ -15,11 +15,13 @@ Mode Headless:
 
 # IMPORTANT: Appliquer nest_asyncio AVANT tout import async
 # Résout "Event loop is closed" avec httpx/Mistral SDK
-import nest_asyncio
-nest_asyncio.apply()
+# SAUF pour "serve" qui utilise uvicorn (conflit event loop)
+import sys
+if "serve" not in sys.argv:
+    import nest_asyncio
+    nest_asyncio.apply()
 
 import os
-import sys
 from pathlib import Path
 
 import click

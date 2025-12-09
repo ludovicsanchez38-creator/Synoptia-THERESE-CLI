@@ -84,12 +84,15 @@ therese /chemin/vers/projet
 | `/init` | Initialise un projet avec THERESE.md |
 | `/clear` | Efface la conversation |
 | `/reset` | Reset complet (conversation + mémoire) |
+| `/compact` | Compresse et résume la conversation |
 | `/tree` | Affiche l'arborescence du projet |
 | `/tasks` | Affiche la liste des tâches |
 | `/status` | Affiche le statut (modèle, mode, tokens) |
 | `/model` | Change le modèle Mistral |
 | `/mode` | Change le mode (auto/safe/yolo) |
-| `/stats` | Statistiques de la session |
+| `/memory` | Affiche/gère la mémoire projet |
+| `/cost` | Coût estimé de la session |
+| `/export` | Exporte la conversation en Markdown |
 
 ### Raccourcis clavier
 
@@ -109,7 +112,7 @@ therese /chemin/vers/projet
 
 ## Fonctionnalités
 
-### 18 outils intégrés
+### 19 outils intégrés
 
 **Fichiers**
 - `read_file` - Lire un fichier
@@ -168,10 +171,10 @@ src/therese/
 ├── __init__.py
 ├── __main__.py          # Entry point CLI
 ├── agent.py             # Agent Mistral avec function calling
-├── commands.py          # 12 commandes slash
+├── commands.py          # 13 commandes slash
 ├── config.py            # Configuration
 ├── memory.py            # Système de mémoire THERESE.md
-├── tools/               # 18 outils
+├── tools/               # 19 outils
 │   ├── base.py          # Classe de base Tool
 │   ├── file.py          # read, write, edit
 │   ├── search.py        # glob, grep
@@ -217,13 +220,13 @@ uv cache clean
 ## Roadmap
 
 - [x] Agent Mistral avec function calling
-- [x] 18 outils (fichiers, shell, git, web)
+- [x] 19 outils (fichiers, shell, git, web, tâches)
 - [x] Streaming Markdown optimisé
 - [x] Support images (Mistral Vision)
 - [x] Historique de prompts (flèches ↑↓)
 - [x] Barre de statut live (temps + tokens)
 - [ ] Mode local avec Ollama
-- [ ] MCP (Model Context Protocol)
+- [x] MCP (Model Context Protocol)
 - [ ] Plugins/extensions
 - [ ] Checkpoints/rewind
 
