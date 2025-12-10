@@ -206,8 +206,19 @@ Sois concis et direct."""
 )
 @click.option(
     "--model", "-m",
-    default="mistral-large-latest",
-    help="Modèle Mistral à utiliser",
+    default=None,
+    help="Modèle à utiliser (défaut: devstral-2 pour API, ministral-3:8b pour Ollama)",
+)
+@click.option(
+    "--provider", "-P",
+    type=click.Choice(["mistral", "ollama"]),
+    default="mistral",
+    help="Provider LLM: mistral (API cloud) ou ollama (local)",
+)
+@click.option(
+    "--ollama-url",
+    default="http://localhost:11434",
+    help="URL du serveur Ollama (si --provider ollama)",
 )
 @click.option(
     "--working-dir", "-d",
@@ -260,7 +271,9 @@ Sois concis et direct."""
 def main(
     ctx: click.Context,
     prompt: str | None,
-    model: str,
+    model: str | None,
+    provider: str,
+    ollama_url: str,
     working_dir: Path | None,
     doubledose: bool,
     version: bool,
@@ -304,22 +317,51 @@ def main(
         console.print(f"THÉRÈSE CLI v{__version__}")
         return
 
-    # Configuration
-    config.model = model
+    # Configuration provider
+    config.provider = provider  # type: ignore
+    config.ollama_base_url = ollama_url
+
+    # Configuration modèle (défaut selon provider si non spécifié)
+    if model:
+        if provider == "ollama":
+            config.ollama_model = model
+        else:
+            config.model = model
+    # Sinon garde les défauts: devstral-2 (mistral) ou ministral-3:8b (ollama)
+
     if working_dir:
         config.working_dir = working_dir
     config.ultrathink = doubledose  # DOUBLEDOSE = ultrathink à la française 🇫🇷
 
-    # Vérifier la clé API
-    if not config.api_key:
+    # Vérifier la clé API (seulement pour provider mistral)
+    if provider == "mistral" and not config.api_key:
         console.print(
             "[bold red]Erreur:[/] Variable MISTRAL_API_KEY non définie.\n\n"
             "Exportez votre clé API Mistral :\n"
             "  export MISTRAL_API_KEY=votre_clé\n\n"
+            "Ou utilisez le provider Ollama (local) :\n"
+            "  therese --provider ollama\n\n"
             "Ou créez un fichier .env dans le répertoire courant.",
             style="red",
         )
         sys.exit(1)
+
+    # Vérifier Ollama si provider ollama
+    if provider == "ollama":
+        from .providers import OllamaProvider
+        ollama = OllamaProvider(base_url=ollama_url)
+        if not ollama.is_available():
+            console.print(
+                f"[bold red]Erreur:[/] Ollama non accessible à {ollama_url}\n\n"
+                "Lancez Ollama :\n"
+                "  ollama serve\n\n"
+                "Ou vérifiez l'URL avec --ollama-url",
+                style="red",
+            )
+            sys.exit(1)
+        # Afficher info provider
+        console.print(f"[dim]Provider: Ollama ({ollama_url})[/]")
+        console.print(f"[dim]Modèle: {config.ollama_model}[/]")
 
     # Détecter si stdin a des données (pipe)
     stdin_data = None

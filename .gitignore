@@ -56,5 +56,7 @@ htmlcov/
 # Ruff
 .ruff_cache/
 
-# Dev notes (contains secrets)
+# Dev notes (contains secrets or internal planning)
 CLAUDE.md
+PLAN.md
+TODO*.md

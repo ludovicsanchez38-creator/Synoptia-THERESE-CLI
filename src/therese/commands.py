@@ -134,6 +134,62 @@ class CommandRegistry:
             handler=self._cmd_export,
         ))
 
+        self.register(SlashCommand(
+            name="provider",
+            description="Change le provider LLM (mistral/ollama)",
+            usage="/provider [mistral|ollama]",
+            handler=self._cmd_provider,
+        ))
+
+        self.register(SlashCommand(
+            name="checkpoint",
+            description="Crée un checkpoint nommé",
+            usage="/checkpoint [name]",
+            handler=self._cmd_checkpoint,
+        ))
+
+        self.register(SlashCommand(
+            name="rewind",
+            description="Restaure un checkpoint",
+            usage="/rewind [id]",
+            handler=self._cmd_rewind,
+        ))
+
+        self.register(SlashCommand(
+            name="checkpoints",
+            description="Liste les checkpoints",
+            usage="/checkpoints",
+            handler=self._cmd_checkpoints,
+        ))
+
+        self.register(SlashCommand(
+            name="bg",
+            description="Lance une commande en arrière-plan",
+            usage="/bg <command>",
+            handler=self._cmd_bg,
+        ))
+
+        self.register(SlashCommand(
+            name="jobs",
+            description="Liste les tâches en arrière-plan",
+            usage="/jobs",
+            handler=self._cmd_jobs,
+        ))
+
+        self.register(SlashCommand(
+            name="kill",
+            description="Arrête une tâche en arrière-plan",
+            usage="/kill <task_id>",
+            handler=self._cmd_kill,
+        ))
+
+        self.register(SlashCommand(
+            name="output",
+            description="Affiche l'output d'une tâche",
+            usage="/output <task_id>",
+            handler=self._cmd_output,
+        ))
+
     async def _cmd_help(self, args: str = "") -> str:
         """Affiche l'aide."""
         if args:
@@ -251,7 +307,11 @@ class CommandRegistry:
         """Change le modèle."""
         from .config import config
 
-        # Modèles organisés par catégorie
+        # Si provider Ollama, utiliser les modèles locaux
+        if config.provider == "ollama":
+            return await self._cmd_model_ollama(args)
+
+        # Modèles Mistral API organisés par catégorie
         models = {
             "chat": [
                 ("mistral-large-latest", "Flagship - meilleur qualité"),
@@ -259,6 +319,8 @@ class CommandRegistry:
                 ("mistral-small-latest", "Rapide et économique"),
             ],
             "code": [
+                ("devstral-2512", "72% SWE-bench, flagship - GRATUIT"),
+                ("devstral-small-latest", "68% SWE-bench, économique"),
                 ("codestral-latest", "Spécialisé code"),
             ],
             "vision": [
@@ -266,8 +328,8 @@ class CommandRegistry:
                 ("pixtral-12b-2409", "Vision léger"),
             ],
             "reasoning": [
-                ("magistral-medium-2509", "🧠 Raisonnement frontier (thinking visible)"),
-                ("magistral-small-2509", "🧠 Raisonnement efficient"),
+                ("magistral-medium-latest", "🧠 Raisonnement frontier"),
+                ("magistral-small-latest", "🧠 Raisonnement efficient"),
             ],
         }
 
@@ -276,7 +338,7 @@ class CommandRegistry:
             all_models.extend([m[0] for m in category_models])
 
         if not args:
-            lines = ["# 🤖 Modèles disponibles", ""]
+            lines = ["# 🤖 Modèles Mistral API", ""]
 
             for category, category_models in models.items():
                 if not category_models:
@@ -302,6 +364,49 @@ class CommandRegistry:
             return f"❌ Modèle inconnu: `{args}`\n\n**Suggestions:** {', '.join(f'`{s}`' for s in suggestions)}"
 
         return f"❌ Modèle inconnu: `{args}`\n\nTape `/model` pour voir la liste."
+
+    async def _cmd_model_ollama(self, args: str = "") -> str:
+        """Change le modèle Ollama."""
+        from .config import config
+        from .providers import OllamaProvider
+
+        provider = OllamaProvider(base_url=config.ollama_base_url)
+
+        if not provider.is_available():
+            return "❌ Ollama n'est pas démarré.\n\nLance `ollama serve` dans un terminal."
+
+        available_models = provider.list_models()
+
+        if not args:
+            lines = ["# 🦙 Modèles Ollama locaux", ""]
+
+            if not available_models:
+                lines.append("Aucun modèle installé.")
+                lines.append("")
+                lines.append("Installe un modèle: `ollama pull ministral-3:14b`")
+            else:
+                for m in available_models:
+                    marker = "→" if m == config.ollama_model else " "
+                    lines.append(f"{marker} `{m}`")
+
+                lines.append("")
+                lines.append(f"**Actuel:** `{config.ollama_model}`")
+                lines.append("")
+                lines.append("Usage: `/model ministral-3:14b`")
+
+            return "\n".join(lines)
+
+        # Vérifier si le modèle existe
+        if args in available_models:
+            config.ollama_model = args
+            return f"✅ Modèle Ollama changé: `{args}`"
+
+        # Suggestions
+        suggestions = [m for m in available_models if args.lower() in m.lower()]
+        if suggestions:
+            return f"❌ Modèle inconnu: `{args}`\n\n**Disponibles:** {', '.join(f'`{s}`' for s in suggestions)}"
+
+        return f"❌ Modèle inconnu: `{args}`\n\nTape `/model` pour voir les modèles installés."
 
     async def _cmd_mode(self, args: str = "") -> str:
         """Change le mode d'approbation."""
@@ -364,6 +469,171 @@ class CommandRegistry:
 
         # Retourner une commande spéciale pour que l'UI gère l'export
         return f"__EXPORT__:{filename}"
+
+    async def _cmd_provider(self, args: str = "") -> str:
+        """Change le provider LLM."""
+        from .config import config
+
+        providers = {
+            "mistral": "API Mistral Cloud (devstral-2, mistral-large, etc.)",
+            "ollama": "Modèles locaux via Ollama (ministral-3, devstral, codestral)",
+        }
+
+        if not args:
+            lines = ["# 🔌 Providers disponibles", ""]
+            for p, desc in providers.items():
+                marker = "→" if p == config.provider else " "
+                lines.append(f"{marker} `{p}`: {desc}")
+            lines.append("")
+            lines.append(f"**Actuel:** `{config.provider}`")
+
+            if config.provider == "ollama":
+                lines.append(f"**URL:** `{config.ollama_base_url}`")
+                lines.append(f"**Modèle:** `{config.ollama_model}`")
+            else:
+                lines.append(f"**Modèle:** `{config.model}`")
+
+            lines.append("")
+            lines.append("Usage: `/provider mistral` ou `/provider ollama`")
+
+            # Lister modèles Ollama si disponible
+            if config.provider == "ollama":
+                try:
+                    from .providers import OllamaProvider
+                    ollama = OllamaProvider(base_url=config.ollama_base_url)
+                    models = ollama.list_models()
+                    if models:
+                        lines.append("")
+                        lines.append("**Modèles Ollama installés:**")
+                        for m in models[:10]:
+                            lines.append(f"  - `{m}`")
+                except Exception:
+                    pass
+
+            return "\n".join(lines)
+
+        if args in providers:
+            old_provider = config.provider
+            config.provider = args  # type: ignore
+
+            if args == "ollama":
+                # Vérifier si Ollama est accessible
+                try:
+                    from .providers import OllamaProvider
+                    ollama = OllamaProvider(base_url=config.ollama_base_url)
+                    if not ollama.is_available():
+                        config.provider = old_provider  # type: ignore
+                        return f"❌ Ollama non accessible à `{config.ollama_base_url}`\n\nLancez `ollama serve` d'abord."
+
+                    models = ollama.list_models()
+                    model_info = f"\nModèles disponibles: {', '.join(models[:5])}" if models else ""
+                    return f"✅ Provider changé: `{args}`\nModèle actif: `{config.ollama_model}`{model_info}"
+                except Exception as e:
+                    config.provider = old_provider  # type: ignore
+                    return f"❌ Erreur Ollama: {e}"
+
+            return f"✅ Provider changé: `{args}`\nModèle actif: `{config.model}`"
+
+        return f"❌ Provider inconnu: `{args}`\n\nOptions: mistral, ollama"
+
+    async def _cmd_checkpoint(self, args: str = "") -> str:
+        """Crée un checkpoint nommé."""
+        from .checkpoints import CheckpointManager
+
+        manager = CheckpointManager(Path.cwd())
+        name = args.strip() if args else None
+
+        checkpoint = manager.create(name=name, is_auto=False)
+        if checkpoint:
+            return f"Checkpoint créé: `{checkpoint.id}` ({checkpoint.name})"
+
+        return "Aucune modification à sauvegarder."
+
+    async def _cmd_rewind(self, args: str = "") -> str:
+        """Restaure un checkpoint."""
+        from .checkpoints import CheckpointManager
+
+        manager = CheckpointManager(Path.cwd())
+
+        if args.strip():
+            # Restaurer un checkpoint spécifique
+            checkpoint_id = args.strip()
+            success = manager.restore(checkpoint_id)
+            if success:
+                return f"Checkpoint `{checkpoint_id}` restauré."
+            return f"Checkpoint `{checkpoint_id}` non trouvé."
+
+        # Quick rewind (dernier checkpoint)
+        success, message = manager.rewind()
+        return message
+
+    async def _cmd_checkpoints(self, args: str = "") -> str:
+        """Liste les checkpoints."""
+        from .checkpoints import CheckpointManager
+
+        manager = CheckpointManager(Path.cwd())
+        return manager.to_markdown()
+
+    async def _cmd_bg(self, args: str = "") -> str:
+        """Lance une commande en arrière-plan."""
+        from .background import get_background_manager
+
+        if not args.strip():
+            return "Usage: `/bg <command>`\n\nExemple: `/bg npm install`"
+
+        manager = get_background_manager()
+        success, message = await manager.run(
+            args.strip(),
+            working_dir=str(Path.cwd()),
+        )
+        return f"{''+'' if success else ''} {message}"
+
+    async def _cmd_jobs(self, args: str = "") -> str:
+        """Liste les tâches en arrière-plan."""
+        from .background import get_background_manager
+
+        manager = get_background_manager()
+        return manager.to_markdown()
+
+    async def _cmd_kill(self, args: str = "") -> str:
+        """Arrête une tâche en arrière-plan."""
+        from .background import get_background_manager
+
+        if not args.strip():
+            return "Usage: `/kill <task_id>`"
+
+        manager = get_background_manager()
+        success, message = manager.kill(args.strip())
+        return message
+
+    async def _cmd_output(self, args: str = "") -> str:
+        """Affiche l'output d'une tâche."""
+        from .background import get_background_manager
+
+        if not args.strip():
+            return "Usage: `/output <task_id>`"
+
+        parts = args.strip().split()
+        task_id = parts[0]
+        tail = int(parts[1]) if len(parts) > 1 else 50
+
+        manager = get_background_manager()
+        task = manager.get_task(task_id)
+
+        if not task:
+            return f"Tâche `{task_id}` non trouvée"
+
+        output = manager.get_output(task_id, tail=tail)
+
+        return f"""# Output: `{task_id}`
+
+**Commande:** `{task.command}`
+**Statut:** {task.status.value}
+**Durée:** {task._get_duration()}
+
+```
+{output}
+```"""
 
 
 # Instance globale

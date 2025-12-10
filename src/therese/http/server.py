@@ -247,7 +247,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="THÉRÈSE API",
         description="API compatible OpenAI propulsée par Mistral",
-        version="0.2.0",
+        version="0.3.0",
         docs_url="/docs",
         redoc_url="/redoc",
     )
@@ -271,7 +271,7 @@ def create_app() -> FastAPI:
         """Page d'accueil."""
         return {
             "name": "THÉRÈSE API",
-            "version": "0.2.0",
+            "version": "0.3.0",
             "description": "Assistant de code IA français propulsé par Mistral",
             "endpoints": {
                 "chat": "/v1/chat/completions",

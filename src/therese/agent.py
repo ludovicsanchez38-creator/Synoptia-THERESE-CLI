@@ -1,9 +1,13 @@
 """
-Agent THERESE - Moteur de raisonnement avec Mistral 3.
+Agent THERESE - Moteur de raisonnement multi-provider.
 
 Gère la boucle de conversation, le function calling,
 le mode ultrathink, la mémoire projet, et les commandes slash.
 Support des images via Mistral Vision (Pixtral).
+
+Providers supportés:
+- Mistral API (cloud) - défaut
+- Ollama (local)
 """
 
 import base64
@@ -13,21 +17,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from mistralai import Mistral
-from mistralai.models import (
-    AssistantMessage,
-    ImageURLChunk,
-    SystemMessage,
-    TextChunk,
-    ThinkChunk,
-    ToolMessage,
-    UserMessage,
-)
-
 from .config import ThereseConfig, config
 from .memory import get_memory_manager
+from .providers import ProviderBase, StreamChunk, get_provider
 from .tools import TOOLS, get_tools_schema, get_tools_summary
 from .tools.project import detect_project
+from .checkpoints import CheckpointManager
 
 
 @dataclass
@@ -91,16 +86,21 @@ class TokenUsage:
         self.completion_tokens += completion
         self.total_tokens += prompt + completion
 
-    def estimate_cost(self, model: str = "mistral-large-latest") -> float:
+    def estimate_cost(self, model: str = "devstral-2") -> float:
         """Estime le coût en USD."""
-        # Prix approximatifs Mistral (décembre 2024)
+        # Prix Mistral (décembre 2025)
         prices = {
+            # Devstral 2 (code agents) - déc 2025
+            "devstral-2": (0.0004, 0.002),  # $0.40/$2.00 per M tokens
+            "devstral-small-2": (0.0001, 0.0003),  # $0.10/$0.30 per M tokens
+            # Chat models
             "mistral-large-latest": (0.002, 0.006),  # input, output per 1K tokens
             "mistral-large-3-25-12": (0.002, 0.006),
-            "codestral-latest": (0.001, 0.003),
             "mistral-small-latest": (0.0002, 0.0006),
+            # Code models (legacy)
+            "codestral-latest": (0.001, 0.003),
         }
-        input_price, output_price = prices.get(model, (0.002, 0.006))
+        input_price, output_price = prices.get(model, (0.0004, 0.002))
         return (self.prompt_tokens * input_price + self.completion_tokens * output_price) / 1000
 
 
@@ -110,14 +110,36 @@ class ThereseAgent:
 
     config: ThereseConfig = field(default_factory=lambda: config)
     messages: list[Message] = field(default_factory=list)
-    client: Mistral | None = None
+    provider: ProviderBase | None = None
     usage: TokenUsage = field(default_factory=TokenUsage)
+    checkpoint_manager: CheckpointManager | None = None
 
     def __post_init__(self) -> None:
-        """Initialise le client Mistral."""
+        """Initialise le provider et le checkpoint manager."""
         self.config.validate()
-        self.client = Mistral(api_key=self.config.api_key)
+        self._init_provider()
+        self._init_checkpoint_manager()
         self._add_system_prompt()
+
+    def _init_checkpoint_manager(self) -> None:
+        """Initialise le gestionnaire de checkpoints."""
+        try:
+            self.checkpoint_manager = CheckpointManager(self.config.working_dir)
+        except Exception:
+            self.checkpoint_manager = None
+
+    def _init_provider(self) -> None:
+        """Initialise le provider LLM selon la config."""
+        if self.config.provider == "ollama":
+            self.provider = get_provider(
+                "ollama",
+                base_url=self.config.ollama_base_url,
+            )
+        else:
+            self.provider = get_provider(
+                "mistral",
+                api_key=self.config.api_key,
+            )
 
     def _get_project_context(self) -> str:
         """Récupère le contexte du projet."""
@@ -216,47 +238,6 @@ Allez, au boulot !"""
 
         self.messages.append(Message(role="system", content=system_prompt))
 
-    def _messages_to_mistral(self) -> list:
-        """Convertit les messages au format Mistral (avec support images)."""
-        result = []
-        for msg in self.messages:
-            if msg.role == "system":
-                result.append(SystemMessage(content=msg.content))
-            elif msg.role == "user":
-                # Support multi-modal si images présentes
-                if msg.images:
-                    content_chunks = []
-                    # D'abord le texte
-                    if msg.content:
-                        content_chunks.append(TextChunk(text=msg.content))
-                    # Puis les images
-                    for img_path in msg.images:
-                        try:
-                            b64_data, mime_type = encode_image_to_base64(img_path)
-                            image_url = f"data:{mime_type};base64,{b64_data}"
-                            content_chunks.append(ImageURLChunk(image_url=image_url))
-                        except Exception as e:
-                            # Si l'image échoue, ajouter un message d'erreur
-                            content_chunks.append(TextChunk(text=f"\n[Erreur image: {e}]"))
-                    result.append(UserMessage(content=content_chunks))
-                else:
-                    result.append(UserMessage(content=msg.content))
-            elif msg.role == "assistant":
-                if msg.tool_calls:
-                    result.append(AssistantMessage(
-                        content=msg.content or "",
-                        tool_calls=msg.tool_calls,
-                    ))
-                else:
-                    result.append(AssistantMessage(content=msg.content))
-            elif msg.role == "tool":
-                result.append(ToolMessage(
-                    content=msg.content,
-                    tool_call_id=msg.tool_call_id,
-                    name=msg.name,
-                ))
-        return result
-
     async def _execute_tool(self, name: str, arguments: dict[str, Any]) -> str:
         """Exécute un outil et retourne le résultat (async)."""
         tool = TOOLS.get(name)
@@ -285,6 +266,15 @@ Allez, au boulot !"""
             return f"Erreur: outil '{name}' non trouvé"
 
         try:
+            # Auto-checkpoint AVANT les modifications de fichiers
+            if name in ("write_file", "edit_file") and self.checkpoint_manager:
+                file_path = arguments.get("file_path", "unknown")
+                try:
+                    self.checkpoint_manager.track_file(Path(file_path))
+                    self.checkpoint_manager.auto_checkpoint(before_action=f"{name} {file_path}")
+                except Exception:
+                    pass  # Ne pas bloquer si checkpoint échoue
+
             # Nettoyer toute loop existante avant d'en créer une nouvelle
             try:
                 asyncio.set_event_loop(None)
@@ -310,13 +300,64 @@ Allez, au boulot !"""
         except Exception as e:
             return f"Erreur d'exécution de {name}: {e}"
 
+    def _get_ollama_tools(self) -> list[dict]:
+        """Retourne un subset de tools essentiels pour Ollama.
+
+        21 tools = trop de contexte pour les modèles locaux.
+        On garde les 8 outils les plus importants pour le coding.
+        """
+        essential_tools = [
+            "read_file",    # Lire du code
+            "write_file",   # Écrire du code
+            "edit_file",    # Modifier du code
+            "bash",         # Exécuter des commandes
+            "tree",         # Explorer le projet
+            "grep",         # Rechercher dans le code
+            "glob",         # Trouver des fichiers
+            "git_status",   # Voir l'état Git
+        ]
+
+        all_tools = get_tools_schema()
+        return [t for t in all_tools if t["function"]["name"] in essential_tools]
+
+    def _messages_to_provider_format(self, images: list[str] | None = None) -> list[dict]:
+        """Convertit les messages au format générique pour les providers."""
+        result = []
+        for msg in self.messages:
+            msg_dict = {
+                "role": msg.role,
+                "content": msg.content,
+            }
+            if msg.images:
+                # Encoder les images en base64 pour le provider
+                encoded_images = []
+                for img_path in msg.images:
+                    try:
+                        b64_data, mime_type = encode_image_to_base64(img_path)
+                        encoded_images.append({
+                            "url": f"data:{mime_type};base64,{b64_data}",
+                            "base64": b64_data,
+                        })
+                    except Exception:
+                        pass
+                if encoded_images:
+                    msg_dict["images"] = encoded_images
+            if msg.tool_calls:
+                msg_dict["tool_calls"] = msg.tool_calls
+            if msg.tool_call_id:
+                msg_dict["tool_call_id"] = msg.tool_call_id
+            if msg.name:
+                msg_dict["name"] = msg.name
+            result.append(msg_dict)
+        return result
+
     def chat_sync(
         self, user_input: str, images: list[str] | None = None
     ):
         """
         Version SYNCHRONE de chat() pour éviter les problèmes d'event loop.
 
-        Utilise client.chat.stream() (sync) au lieu de stream_async().
+        Utilise le provider configuré (Mistral API ou Ollama).
         Doit être appelée depuis un thread séparé.
 
         Yields des chunks de texte pour l'affichage streaming.
@@ -324,17 +365,15 @@ Allez, au boulot !"""
         import asyncio
 
         # IMPORTANT: Nettoyer toute référence à une event loop existante
-        # Le thread hérite parfois d'une référence à la loop de Textual
         try:
             asyncio.set_event_loop(None)
         except Exception:
             pass
 
-        # Créer un nouveau client SYNC à chaque appel
-        client = Mistral(api_key=self.config.api_key)
+        # Recréer le provider (thread safety)
+        self._init_provider()
 
-        # FIX: Vérifier si le dernier message est un "tool" (cas: iteration limit atteinte)
-        # L'API Mistral n'accepte pas "tool" -> "user", il faut "tool" -> "assistant" -> "user"
+        # FIX: Vérifier si le dernier message est un "tool"
         if self.messages and self.messages[-1].role == "tool":
             self.messages.append(Message(
                 role="assistant",
@@ -344,78 +383,58 @@ Allez, au boulot !"""
         # Ajouter le message utilisateur (avec images si présentes)
         self.messages.append(Message(role="user", content=user_input, images=images))
 
-        # Utiliser Pixtral pour les images, sinon le modèle par défaut
-        model = "pixtral-large-latest" if images else self.config.model
+        # Déterminer le modèle selon le provider
+        if self.config.provider == "ollama":
+            model = self.config.ollama_model
+        else:
+            # Utiliser Pixtral pour les images (Mistral), sinon le modèle par défaut
+            model = "pixtral-large-latest" if images else self.config.model
 
         max_iterations = 15
 
         for iteration in range(max_iterations):
-            # Appel SYNCHRONE à Mistral
-            if images and iteration == 0:
-                response = client.chat.stream(
-                    model=model,
-                    messages=self._messages_to_mistral(),
-                )
-            else:
-                response = client.chat.stream(
-                    model=model if iteration == 0 else self.config.model,
-                    messages=self._messages_to_mistral(),
-                    tools=get_tools_schema(),
-                    tool_choice="auto",
-                )
+            # Préparer les messages pour le provider
+            provider_messages = self._messages_to_provider_format(images)
 
-            # Collecter la réponse
+            # Préparer les tools (sauf première itération avec images sur Mistral)
+            tools = None
+            if not (images and iteration == 0 and self.config.provider == "mistral"):
+                if self.provider and self.provider.supports_tools:
+                    # Ollama : subset de tools essentiels (21 tools = trop pour le contexte)
+                    if self.config.provider == "ollama":
+                        tools = self._get_ollama_tools()
+                    else:
+                        tools = get_tools_schema()
+
+            # Appel streaming via le provider
             content_chunks: list[str] = []
             tool_calls: list[dict] = []
 
-            # Itération SYNCHRONE sur le stream
-            for event in response:
-                if event.data.choices:
-                    choice = event.data.choices[0]
-                    delta = choice.delta
-
+            try:
+                for chunk in self.provider.chat_stream(
+                    messages=provider_messages,
+                    model=model if iteration == 0 else self.config.get_active_model(),
+                    tools=tools,
+                ):
                     # Contenu textuel
-                    if delta.content:
-                        if isinstance(delta.content, list):
-                            for chunk_item in delta.content:
-                                if isinstance(chunk_item, ThinkChunk):
-                                    for think_text in chunk_item.thinking or []:
-                                        if hasattr(think_text, 'text') and think_text.text:
-                                            content_chunks.append(think_text.text)
-                                            yield think_text.text
-                                elif hasattr(chunk_item, 'text') and chunk_item.text:
-                                    content_chunks.append(chunk_item.text)
-                                    yield chunk_item.text
-                        else:
-                            content_chunks.append(delta.content)
-                            yield delta.content
+                    if chunk.content:
+                        content_chunks.append(chunk.content)
+                        yield chunk.content
 
                     # Tool calls
-                    if delta.tool_calls:
-                        for tc in delta.tool_calls:
-                            if tc.index >= len(tool_calls):
-                                tool_calls.append({
-                                    "id": tc.id or "",
-                                    "type": "function",
-                                    "function": {
-                                        "name": tc.function.name or "",
-                                        "arguments": tc.function.arguments or "",
-                                    },
-                                })
-                            else:
-                                if tc.function.arguments:
-                                    tool_calls[tc.index]["function"]["arguments"] += tc.function.arguments
-                                if tc.function.name:
-                                    tool_calls[tc.index]["function"]["name"] = tc.function.name
-                                if tc.id:
-                                    tool_calls[tc.index]["id"] = tc.id
+                    if chunk.tool_calls:
+                        tool_calls = chunk.tool_calls
 
-                # Tracker l'usage
-                if event.data.usage:
-                    self.usage.add(
-                        event.data.usage.prompt_tokens or 0,
-                        event.data.usage.completion_tokens or 0,
-                    )
+                    # Usage
+                    if chunk.usage:
+                        self.usage.add(
+                            chunk.usage.get("prompt_tokens", 0),
+                            chunk.usage.get("completion_tokens", 0),
+                        )
+
+            except Exception as e:
+                yield f"\n\n❌ Erreur provider: {e}"
+                return
 
             full_content = "".join(content_chunks)
 
@@ -465,7 +484,6 @@ Allez, au boulot !"""
                 else:
                     result_preview = result
 
-                # Pas de bloc code pour que le texte wrappe correctement
                 yield f"\n{result_preview}\n"
 
                 self.messages.append(Message(
@@ -511,8 +529,6 @@ Allez, au boulot !"""
 
     def _generate_summary_sync(self, messages: list[Message]) -> str:
         """Génère un résumé LLM des messages (sync)."""
-        client = Mistral(api_key=self.config.api_key)
-
         formatted = self._format_messages_for_summary(messages)
         summary_prompt = f"""Résume cette conversation en 3-5 points clés.
 Garde les informations importantes : fichiers modifiés, décisions prises, problèmes résolus.
@@ -524,12 +540,22 @@ Conversation:
 Résumé:"""
 
         try:
-            response = client.chat.complete(
-                model="mistral-small-latest",  # Modèle rapide pour le résumé
+            # Utiliser un modèle rapide selon le provider
+            if self.config.provider == "ollama":
+                model = "ministral-3:3b"  # Rapide pour résumé
+            else:
+                model = "mistral-small-latest"
+
+            # Récupérer le résumé via le provider
+            summary_parts = []
+            for chunk in self.provider.chat_stream(
                 messages=[{"role": "user", "content": summary_prompt}],
-                max_tokens=500,
-            )
-            return response.choices[0].message.content or "[Résumé indisponible]"
+                model=model,
+            ):
+                if chunk.content:
+                    summary_parts.append(chunk.content)
+
+            return "".join(summary_parts) or "[Résumé indisponible]"
         except Exception as e:
             return f"[Résumé auto: {len(messages)} messages précédents - Erreur: {e}]"
 

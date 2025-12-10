@@ -30,9 +30,16 @@ def _get_default_working_dir() -> Path:
 class ThereseConfig:
     """Configuration principale de THERESE."""
 
+    # Provider (mistral API ou ollama local)
+    provider: Literal["mistral", "ollama"] = "mistral"
+
     # API Mistral
     api_key: str = field(default_factory=lambda: os.getenv("MISTRAL_API_KEY", ""))
-    model: str = "mistral-large-latest"  # ou mistral-large-3-25-12
+    model: str = "mistral-large-latest"  # Flagship général, meilleur créativité
+
+    # Ollama (local)
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "ministral-3:14b"  # Meilleur Mistral local pour M4 16GB
 
     # Contexte
     max_context_tokens: int = 128_000  # Mistral Large 3 = 256K, on garde de la marge
@@ -61,11 +68,18 @@ class ThereseConfig:
 
     def validate(self) -> None:
         """Valide la configuration."""
-        if not self.api_key:
+        if self.provider == "mistral" and not self.api_key:
             raise ValueError(
                 "MISTRAL_API_KEY non définie. "
-                "Exportez-la ou créez un fichier .env"
+                "Exportez-la ou créez un fichier .env\n"
+                "Ou utilisez --provider ollama pour un modèle local"
             )
+
+    def get_active_model(self) -> str:
+        """Retourne le modèle actif selon le provider."""
+        if self.provider == "ollama":
+            return self.ollama_model
+        return self.model
 
 
 # Couleurs THERESE (Bleu Blanc Rouge + Orange Mistral)

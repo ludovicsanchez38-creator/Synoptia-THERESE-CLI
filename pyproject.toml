@@ -1,6 +1,6 @@
 [project]
 name = "therese-cli"
-version = "0.2.0"
+version = "0.3.0"
 description = "THERESE CLI - Assistant de code IA français propulsé par Mistral 3"
 readme = "README.md"
 license = "Apache-2.0"

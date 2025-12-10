@@ -1,10 +1,11 @@
-# THÉRÈSE CLI 🇫🇷
+# THERESE CLI 0.3.0
 
-**Assistant de code IA français propulsé par Mistral AI**
+**Assistant de code IA francais propulse par Mistral AI**
 
 <p align="center">
+  <img src="https://img.shields.io/badge/Version-0.3.0-blue" alt="Version 0.3.0">
   <img src="https://img.shields.io/badge/Python-3.11+-blue?logo=python" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/Mistral-Large-orange" alt="Mistral AI">
+  <img src="https://img.shields.io/badge/Mistral-Large_3-orange" alt="Mistral AI">
   <img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="Apache 2.0 License">
   <img src="https://img.shields.io/badge/Made_in-France-red" alt="Made in France">
 </p>
@@ -20,32 +21,41 @@
 
 ---
 
-**THÉRÈSE** (Terminal Helper for Engineering, Research, Editing, Software & Execution) est un assistant de code en ligne de commande, 100% français, inspiré de Claude Code mais propulsé par **Mistral AI**.
+**THERESE** (Terminal Helper for Engineering, Research, Editing, Software & Execution) est un assistant de code en ligne de commande, 100% francais, inspire de Claude Code mais propulse par **Mistral AI**.
 
-## Pourquoi THÉRÈSE ?
+## Nouveautes v0.3.0
 
-| | THÉRÈSE | Claude Code |
+- **Checkpoints/Rewind** - Sauvegarde automatique avant modifications, restauration en un clic
+- **Background Tasks** - Executez des commandes longues en arriere-plan (`/bg`, `/jobs`, `/kill`)
+- **Sub-Agents** - Deleguer des taches a des agents specialises (code-reviewer, debugger, planner)
+- **Ctrl+R Historique** - Recherche fuzzy dans l'historique des prompts
+- **Double Esc** - Quick rewind vers le dernier checkpoint
+- **21 commandes slash** et **21 outils** disponibles
+
+## Pourquoi THERESE ?
+
+| | THERESE | Claude Code |
 |---|---------|-------------|
-| **IA** | Mistral AI 🇫🇷 | Anthropic 🇺🇸 |
+| **IA** | Mistral AI | Anthropic |
 | **Langage** | Python | TypeScript |
 | **Taille** | ~30 MB | ~200 MB |
-| **Prix API** | €€ | €€€€ |
-| **Open Source** | ✅ Oui | ❌ Non |
-| **Souveraineté** | 🇫🇷 France | 🇺🇸 USA |
+| **Prix API** | Economique | Premium |
+| **Open Source** | Oui | Non |
+| **Souverainete** | France | USA |
 
 ## Installation
 
-### Prérequis
+### Prerequis
 - Python 3.11+
 - [UV](https://docs.astral.sh/uv/) (gestionnaire de packages ultra-rapide)
 
 ### Installation rapide
 
 ```bash
-# Installer UV si nécessaire
+# Installer UV si necessaire
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Installer THÉRÈSE globalement
+# Installer THERESE globalement
 uv tool install therese-cli
 
 # Ou depuis les sources
@@ -57,185 +67,252 @@ uv tool install .
 ### Configuration
 
 ```bash
-# Ajouter votre clé API Mistral
-export MISTRAL_API_KEY="votre-clé-api"
+# Ajouter votre cle API Mistral
+export MISTRAL_API_KEY="votre-cle-api"
 
-# (Optionnel) Ajouter à ~/.zshrc ou ~/.bashrc pour persister
-echo 'export MISTRAL_API_KEY="votre-clé-api"' >> ~/.zshrc
+# (Optionnel) Ajouter a ~/.zshrc ou ~/.bashrc pour persister
+echo 'export MISTRAL_API_KEY="votre-cle-api"' >> ~/.zshrc
 ```
 
-Obtenez une clé API sur [console.mistral.ai](https://console.mistral.ai/)
+Obtenez une cle API sur [console.mistral.ai](https://console.mistral.ai/)
 
 ## Utilisation
 
 ```bash
-# Lancer THÉRÈSE
+# Lancer THERESE
 therese
 
-# Lancer dans un dossier spécifique
+# Lancer dans un dossier specifique
 therese /chemin/vers/projet
+
+# Mode headless (une commande)
+therese -p "Explique ce code"
+
+# Utiliser un agent specifique
+therese -a code-reviewer "Revise ce fichier"
 ```
 
-### Commandes slash
+## 21 Commandes Slash
 
+### Commandes de base
 | Commande | Description |
 |----------|-------------|
 | `/help` | Affiche l'aide |
-| `/init` | Initialise un projet avec THERESE.md |
-| `/clear` | Efface la conversation |
-| `/reset` | Reset complet (conversation + mémoire) |
-| `/compact` | Compresse et résume la conversation |
-| `/tree` | Affiche l'arborescence du projet |
-| `/tasks` | Affiche la liste des tâches |
-| `/status` | Affiche le statut (modèle, mode, tokens) |
-| `/model` | Change le modèle Mistral |
-| `/mode` | Change le mode (auto/safe/yolo) |
-| `/memory` | Affiche/gère la mémoire projet |
-| `/cost` | Coût estimé de la session |
+| `/clear` | Efface l'ecran |
+| `/reset` | Reinitialise la conversation |
+| `/compact` | Compresse et resume la conversation |
+| `/status` | Affiche le statut (modele, tokens, cout) |
+| `/cost` | Cout estime de la session |
 | `/export` | Exporte la conversation en Markdown |
 
-### Raccourcis clavier
+### Projet et memoire
+| Commande | Description |
+|----------|-------------|
+| `/init` | Initialise THERESE.md pour le projet |
+| `/tree` | Affiche l'arborescence du projet |
+| `/tasks` | Affiche la liste des taches |
+| `/memory` | Affiche/gere la memoire projet |
+
+### Configuration
+| Commande | Description |
+|----------|-------------|
+| `/model` | Change le modele Mistral |
+| `/mode` | Change le mode (auto/safe/yolo) |
+| `/provider` | Change le provider (mistral/ollama) |
+
+### Checkpoints (nouveau v0.3.0)
+| Commande | Description |
+|----------|-------------|
+| `/checkpoint [name]` | Cree un checkpoint nomme |
+| `/checkpoints` | Liste tous les checkpoints |
+| `/rewind [id]` | Restaure un checkpoint |
+
+### Background Tasks (nouveau v0.3.0)
+| Commande | Description |
+|----------|-------------|
+| `/bg <command>` | Lance une commande en arriere-plan |
+| `/jobs` | Liste les taches en cours |
+| `/kill <id>` | Arrete une tache |
+| `/output <id>` | Affiche l'output d'une tache |
+
+## Raccourcis Clavier
 
 | Raccourci | Action |
 |-----------|--------|
 | `Enter` | Envoyer le message |
 | `Ctrl+J` | Nouvelle ligne |
-| `↑` / `↓` | Historique des prompts |
+| `Haut/Bas` | Historique des prompts |
+| `Ctrl+R` | Recherche dans l'historique |
+| `Ctrl+L` | Effacer l'ecran |
+| `Ctrl+T` | Afficher l'arborescence |
+| `Ctrl+G` | Git status |
+| `Double Esc` | Quick rewind |
 | `Ctrl+C` | Quitter |
-| `Ctrl+L` | Effacer l'écran |
 
-### Modes d'approbation
+## 21 Outils Integres
 
-- **`auto`** (défaut) : Confirmation pour les actions dangereuses uniquement
-- **`safe`** : Confirmation pour toutes les modifications
-- **`yolo`** : Aucune confirmation (à vos risques !)
-
-## Fonctionnalités
-
-### 19 outils intégrés
-
-**Fichiers**
+### Fichiers
 - `read_file` - Lire un fichier
-- `write_file` - Écrire un fichier
-- `edit_file` - Éditer un fichier (rechercher/remplacer)
-- `glob` - Rechercher des fichiers par pattern
-- `grep` - Rechercher du texte dans les fichiers
-- `tree` - Afficher l'arborescence
-- `diff` / `diff_preview` - Comparer des fichiers
+- `write_file` - Ecrire un fichier
+- `edit_file` - Editer (rechercher/remplacer)
+- `glob` - Rechercher par pattern
+- `grep` - Rechercher du texte
 
-**Shell & Git**
-- `bash` - Exécuter des commandes shell
-- `git` - Commandes git
-- `git_commit` - Créer un commit
+### Systeme
+- `bash` - Executer des commandes shell
+- `tree` - Afficher l'arborescence
+
+### Git
+- `git` - Commandes git generiques
+- `git_commit` - Creer un commit
 - `git_status` - Statut du repo
 
-**Web**
-- `web_fetch` - Récupérer une page web
+### Web
+- `web_fetch` - Recuperer une page web
 - `web_search` - Recherche DuckDuckGo
 
-**Projet**
-- `project_detect` - Détecter le type de projet
+### Projet
+- `project_detect` - Detecter le type de projet
 - `project_run` - Lancer le projet
 
-**Tâches**
-- `task_list` / `task_add` / `task_update` - Gérer les tâches
+### Diff
+- `diff` - Comparer des fichiers
+- `diff_preview` - Previsualiser les changements
 
-### Support multi-modal (Vision)
+### Taches
+- `task_list` - Lister les taches
+- `task_add` - Ajouter une tache
+- `task_update` - Mettre a jour une tache
 
-THÉRÈSE supporte l'analyse d'images via Mistral Vision (Pixtral) :
+### Agents (nouveau v0.3.0)
+- `spawn_subagent` - Deleguer a un agent specialise
+- `list_agents` - Lister les agents disponibles
+
+## Agents Integres
+
+| Agent | Description | Modele |
+|-------|-------------|--------|
+| `code-reviewer` | Expert revue de code (bugs, perf, secu) | codestral-latest |
+| `debugger` | Expert debogage et analyse d'erreurs | mistral-large-latest |
+| `planner` | Architecte pour planifier les implementations | mistral-large-latest |
 
 ```bash
-# Coller le chemin d'une image dans l'input
-/Users/vous/image.png Qu'est-ce qu'il y a sur cette image ?
+# Utiliser un agent
+therese -a code-reviewer "Revise src/main.py"
+therese -a debugger "Analyse cette erreur: ..."
+therese -a planner "Planifie l'ajout d'une feature X"
 ```
 
-### Messages de réflexion
+## Modes d'Approbation
 
-25 messages humoristiques français pendant que THÉRÈSE réfléchit :
-- "Fait cuire une baguette..."
-- "Affine le camembert..."
-- "Prépare le saucisson..."
-- etc.
+- **`auto`** (defaut) : Confirmation pour les actions dangereuses uniquement
+- **`safe`** : Confirmation pour toutes les modifications
+- **`yolo`** : Aucune confirmation (a vos risques !)
 
-### Thème Bleu Blanc Rouge
+## Modeles Disponibles
 
-- **TH** : Bleu (#0055A4)
-- **ERE** : Blanc (#FFFFFF)
-- **SE** : Rouge (#EF4135)
-- **CLI** : Orange Mistral (#FF7000)
+### Mistral API (defaut)
+| Modele | Usage | Prix |
+|--------|-------|------|
+| `mistral-large-latest` | General, creatif (defaut) | $2/$6 |
+| `devstral-2512` | Code, 72% SWE-bench | Gratuit |
+| `codestral-latest` | Code specialise | $0.3/$0.9 |
+| `magistral-medium-latest` | Raisonnement | $2/$5 |
+
+### Ollama (local, experimental)
+```bash
+therese --provider ollama --model ministral-3:14b
+```
 
 ## Architecture
 
 ```
 src/therese/
-├── __init__.py
+├── __init__.py          # Version 0.3.0
 ├── __main__.py          # Entry point CLI
+├── cli.py               # CLI Click avec sous-commandes
 ├── agent.py             # Agent Mistral avec function calling
-├── commands.py          # 13 commandes slash
+├── commands.py          # 21 commandes slash
 ├── config.py            # Configuration
-├── memory.py            # Système de mémoire THERESE.md
-├── tools/               # 19 outils
+├── memory.py            # Systeme de memoire THERESE.md
+├── background.py        # [NEW] Background tasks manager
+├── tools/               # 21 outils
 │   ├── base.py          # Classe de base Tool
-│   ├── file.py          # read, write, edit
-│   ├── search.py        # glob, grep
-│   ├── shell.py         # bash
+│   ├── read.py, write.py, edit.py
+│   ├── bash.py, tree.py
 │   ├── git.py           # git, commit, status
 │   ├── web.py           # fetch, search
-│   └── ...
-└── ui/
-    ├── app.py           # Application Textual
-    └── theme.py         # CSS Textual
+│   ├── diff.py          # diff, preview
+│   ├── project.py       # detect, run
+│   ├── task.py          # list, add, update
+│   └── subagent.py      # [NEW] spawn, list
+├── providers/           # [NEW] Abstraction providers
+│   ├── base.py          # ProviderBase ABC
+│   ├── mistral.py       # MistralProvider
+│   └── ollama.py        # OllamaProvider
+├── checkpoints/         # [NEW] Sauvegarde/restauration
+│   ├── manager.py       # CheckpointManager
+│   └── storage.py       # Git/File storage
+├── agents/              # Agents YAML
+│   └── builtin/         # code-reviewer, debugger, planner
+├── ui/
+│   ├── app.py           # Application Textual
+│   └── theme.py         # CSS Textual
+├── shell/               # Shell Assistant
+├── http/                # HTTP Server (therese serve)
+├── mcp/                 # Model Context Protocol
+└── sessions/            # Multi-sessions SQLite
 ```
 
-## Stack technique
+## Stack Technique
 
-| Technologie | Rôle | Pourquoi |
+| Technologie | Role | Pourquoi |
 |-------------|------|----------|
-| **Python 3.11+** | Runtime | Écosystème IA mature, SDK Mistral prioritaire |
-| **UV** | Package manager | 10-100x plus rapide que pip (écrit en Rust) |
-| **Mistral AI** | LLM | Souveraineté FR, function calling robuste, 2-3x moins cher |
+| **Python 3.11+** | Runtime | Ecosysteme IA mature, SDK Mistral prioritaire |
+| **UV** | Package manager | 10-100x plus rapide que pip (ecrit en Rust) |
+| **Mistral AI** | LLM | Souverainete FR, function calling robuste |
 | **Textual** | UI terminal | CSS natif, streaming Markdown O(1) |
 | **Rich** | Formatage | Markdown, syntax highlighting |
 
-## Développement
+## Developpement
 
 ```bash
 # Cloner le repo
 git clone https://github.com/ludovicsanchez38-creator/Synoptia-THERESE-CLI.git
 cd Synoptia-THERESE-CLI
 
-# Installer les dépendances
+# Installer les dependances
 uv sync
 
 # Lancer en mode dev
 uv run therese
 
-# Réinstaller après modifications
-uv tool uninstall therese-cli && uv tool install .
-
-# Nettoyer le cache UV si besoin
-uv cache clean
+# Reinstaller apres modifications
+uv tool uninstall therese-cli && uv cache clean && uv tool install .
 ```
 
 ## Roadmap
 
 - [x] Agent Mistral avec function calling
-- [x] 19 outils (fichiers, shell, git, web, tâches)
-- [x] Streaming Markdown optimisé
+- [x] 21 outils (fichiers, shell, git, web, taches, agents)
+- [x] 21 commandes slash
+- [x] Streaming Markdown optimise
 - [x] Support images (Mistral Vision)
-- [x] Historique de prompts (flèches ↑↓)
-- [x] Barre de statut live (temps + tokens)
-- [ ] Mode local avec Ollama
+- [x] Historique de prompts (fleches)
+- [x] Ctrl+R recherche historique
+- [x] Checkpoints/rewind
+- [x] Background tasks
+- [x] Sub-agents
 - [x] MCP (Model Context Protocol)
+- [ ] Provider Ollama (stable)
 - [ ] Plugins/extensions
-- [ ] Checkpoints/rewind
 
 ## Contribuer
 
 Les contributions sont les bienvenues ! Voir [CONTRIBUTING.md](CONTRIBUTING.md) pour les guidelines.
 
 1. Fork le projet
-2. Créer une branche (`git checkout -b feature/ma-feature`)
+2. Creer une branche (`git checkout -b feature/ma-feature`)
 3. Commit (`git commit -m 'feat: ma feature'`)
 4. Push (`git push origin feature/ma-feature`)
 5. Ouvrir une Pull Request
@@ -244,14 +321,14 @@ Les contributions sont les bienvenues ! Voir [CONTRIBUTING.md](CONTRIBUTING.md) 
 
 Apache License 2.0 - voir [LICENSE](LICENSE)
 
-## Crédits
+## Credits
 
-Créé avec ❤️ par [Synoptia](https://synoptia.fr)
+Cree avec par [Synoptia](https://synoptia.fr)
 
-Propulsé par [Mistral AI](https://mistral.ai) 🇫🇷
+Propulse par [Mistral AI](https://mistral.ai)
 
 ---
 
 <p align="center">
-  <strong>THÉRÈSE</strong> - L'IA française qui code avec vous 🐓
+  <strong>THERESE</strong> - L'IA francaise qui code avec vous
 </p>

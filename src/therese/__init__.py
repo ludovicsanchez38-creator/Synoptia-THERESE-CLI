@@ -10,5 +10,5 @@ THERESE CLI - Assistant de code IA français
 Propulsé par Mistral 3 🇫🇷
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __author__ = "Synoptia"

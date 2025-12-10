@@ -30,6 +30,7 @@ from .git import GitTool, GitCommitTool, GitStatusTool
 from .diff import DiffTool, DiffPreviewTool
 from .project import ProjectDetectTool, ProjectRunTool
 from .task import TaskListTool, TaskAddTool, TaskUpdateTool
+from .subagent import SubAgentTool, ListAgentsTool
 
 # Registre de tous les outils disponibles
 TOOLS: dict[str, Tool] = {}
@@ -65,6 +66,7 @@ def get_tools_summary() -> str:
         "🔄 Diff": ["diff", "diff_preview"],
         "📦 Projet": ["project_detect", "project_run"],
         "✅ Tâches": ["task_list", "task_add", "task_update"],
+        "🤖 Agents": ["spawn_subagent", "list_agents"],
     }
 
     lines = []
@@ -115,6 +117,10 @@ def _register_default_tools() -> None:
     register_tool(TaskListTool())
     register_tool(TaskAddTool())
     register_tool(TaskUpdateTool())
+
+    # Sub-agents
+    register_tool(SubAgentTool())
+    register_tool(ListAgentsTool())
 
 
 _register_default_tools()

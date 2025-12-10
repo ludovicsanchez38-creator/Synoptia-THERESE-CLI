@@ -23,7 +23,8 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import ScrollableContainer, Horizontal, Vertical
-from textual.widgets import Footer, Input, Static, Markdown, TextArea
+from textual.screen import ModalScreen
+from textual.widgets import Footer, Input, Static, Markdown, TextArea, ListView, ListItem, Label
 
 # Extensions d'images supportées
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
@@ -801,6 +802,140 @@ class StreamingMessage(Vertical):
         return "".join(self._chunks)
 
 
+class HistorySearchScreen(ModalScreen[str]):
+    """Modal de recherche dans l'historique des prompts (Ctrl+R)."""
+
+    DEFAULT_CSS = """
+    HistorySearchScreen {
+        align: center middle;
+    }
+
+    HistorySearchScreen > Vertical {
+        width: 80%;
+        max-width: 100;
+        height: auto;
+        max-height: 80%;
+        background: #161B22;
+        border: solid #FF7000;
+        padding: 1 2;
+    }
+
+    HistorySearchScreen #search-input {
+        width: 100%;
+        margin-bottom: 1;
+    }
+
+    HistorySearchScreen #history-list {
+        height: auto;
+        max-height: 20;
+        background: #0D1117;
+    }
+
+    HistorySearchScreen .history-item {
+        padding: 0 1;
+    }
+
+    HistorySearchScreen .history-item:hover {
+        background: #21262D;
+    }
+
+    HistorySearchScreen .history-item.-selected {
+        background: #FF7000;
+        color: #0D1117;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Annuler"),
+        Binding("enter", "select", "Sélectionner"),
+        Binding("up", "cursor_up", "Haut"),
+        Binding("down", "cursor_down", "Bas"),
+    ]
+
+    def __init__(self, history: list[str], **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.history = history[::-1]  # Plus récent en premier
+        self.filtered: list[str] = self.history.copy()
+        self.selected_index = 0
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(
+                Text("Recherche historique (Ctrl+R)", style=f"bold {Colors.ORANGE}"),
+                id="search-header"
+            )
+            yield Input(placeholder="Tapez pour filtrer...", id="search-input")
+            yield ListView(id="history-list")
+            yield Static(
+                Text("↑↓ Naviguer │ Enter Sélectionner │ Esc Annuler", style="dim"),
+                id="search-footer"
+            )
+
+    def on_mount(self) -> None:
+        self._update_list()
+        self.query_one("#search-input", Input).focus()
+
+    def _update_list(self) -> None:
+        """Met à jour la liste des résultats."""
+        list_view = self.query_one("#history-list", ListView)
+        list_view.clear()
+
+        for i, item in enumerate(self.filtered[:20]):  # Max 20 items
+            truncated = item[:80] + "..." if len(item) > 80 else item
+            list_item = ListItem(
+                Label(truncated),
+                classes="history-item",
+                id=f"history-{i}",
+            )
+            list_view.append(list_item)
+
+        # Sélectionner le premier
+        if self.filtered:
+            self.selected_index = 0
+            list_view.index = 0
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Filtre l'historique quand le texte change."""
+        query = event.value.lower().strip()
+        if query:
+            self.filtered = [h for h in self.history if query in h.lower()]
+        else:
+            self.filtered = self.history.copy()
+        self._update_list()
+
+    def action_cancel(self) -> None:
+        """Ferme sans sélection."""
+        self.dismiss("")
+
+    def action_select(self) -> None:
+        """Sélectionne l'item courant."""
+        if self.filtered and 0 <= self.selected_index < len(self.filtered):
+            self.dismiss(self.filtered[self.selected_index])
+        else:
+            self.dismiss("")
+
+    def action_cursor_up(self) -> None:
+        """Monte dans la liste."""
+        if self.selected_index > 0:
+            self.selected_index -= 1
+            list_view = self.query_one("#history-list", ListView)
+            list_view.index = self.selected_index
+
+    def action_cursor_down(self) -> None:
+        """Descend dans la liste."""
+        if self.selected_index < len(self.filtered) - 1:
+            self.selected_index += 1
+            list_view = self.query_one("#history-list", ListView)
+            list_view.index = self.selected_index
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """Quand on clique sur un item."""
+        if event.item and event.item.id:
+            idx = int(event.item.id.split("-")[1])
+            if 0 <= idx < len(self.filtered):
+                self.dismiss(self.filtered[idx])
+
+
 class ThereseApp(App):
     """Application principale THERESE CLI."""
 
@@ -809,11 +944,12 @@ class ThereseApp(App):
     BINDINGS = [
         Binding("ctrl+c", "quit", "Quitter"),
         Binding("ctrl+l", "clear", "Effacer"),
-        Binding("ctrl+r", "reset", "Reset"),
+        Binding("ctrl+r", "history_search", "Historique"),
         Binding("escape", "cancel", "Annuler"),
         Binding("ctrl+t", "tree", "Tree"),
         Binding("ctrl+g", "git_status", "Git"),
         Binding("ctrl+o", "toggle_cot", "COT"),
+        Binding("ctrl+shift+r", "reset", "Reset"),
     ]
 
     def __init__(self, working_dir: Path | None = None) -> None:
@@ -824,6 +960,7 @@ class ThereseApp(App):
         self.is_processing = False
         self.status_bar: StatusBar | None = None
         self._last_streaming_msg: StreamingMessage | None = None  # Pour toggle COT
+        self._last_escape_time: float = 0.0  # Pour détecter double Esc (quick rewind)
 
     def compose(self) -> ComposeResult:
         """Compose l'interface."""
@@ -1051,9 +1188,36 @@ Que puis-je faire pour toi ?"""
             self.status_bar.refresh_stats()
 
     def action_cancel(self) -> None:
-        """Annule l'opération en cours."""
+        """Annule l'opération en cours ou quick rewind (double Esc)."""
+        import time
+
+        now = time.time()
+
+        # Double Esc (moins de 500ms) = quick rewind
+        if (now - self._last_escape_time) < 0.5:
+            self._quick_rewind()
+            self._last_escape_time = 0.0  # Reset
+            return
+
+        self._last_escape_time = now
+
         if self.is_processing:
             self.notify("Annulation en cours...")
+        else:
+            self.notify("Esc x2 = quick rewind", severity="information")
+
+    def _quick_rewind(self) -> None:
+        """Quick rewind au dernier checkpoint."""
+        if not self.agent.checkpoint_manager:
+            self.notify("Checkpoints non disponibles", severity="warning")
+            return
+
+        success, message = self.agent.checkpoint_manager.rewind()
+        if success:
+            self.notify(f"Rewind: {message}", severity="information")
+            self._add_message(f"Rewind effectué: {message}", "command")
+        else:
+            self.notify(message, severity="warning")
 
     async def action_tree(self) -> None:
         """Affiche l'arborescence."""
@@ -1071,6 +1235,22 @@ Que puis-je faire pour toi ?"""
             self._last_streaming_msg.toggle_cot()
         else:
             self.notify("Pas de raisonnement à afficher", severity="warning")
+
+    def action_history_search(self) -> None:
+        """Ouvre la recherche dans l'historique (Ctrl+R)."""
+        history = ExpandableInput._history
+        if not history:
+            self.notify("Historique vide", severity="warning")
+            return
+
+        def on_dismiss(result: str) -> None:
+            if result:
+                # Insérer dans l'input
+                input_widget = self.query_one("#input", ExpandableInput)
+                input_widget.text = result
+                input_widget.focus()
+
+        self.push_screen(HistorySearchScreen(history), on_dismiss)
 
     def _export_conversation(self, filename: str) -> str:
         """Exporte la conversation en fichier Markdown."""
